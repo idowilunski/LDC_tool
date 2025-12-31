@@ -12,8 +12,8 @@ The tool prioritizes correctness and transparency over completeness or automatio
 ## 2. Platform Scope
 
 This specification targets:
-- **Linux** (common distributions)
-- **Windows** (Windows 10 and later)
+- Linux (common distributions)
+- Windows (Windows 10 and later)
 
 macOS is out of scope for v1.
 
@@ -27,7 +27,7 @@ The tool is invoked as a local CLI command.
 
 ### 3.2 Inspection Modes
 
-The tool supports the following mode flags:
+The tool supports the following inspection modes:
 
 | Flag | Domain | Inspection Targets |
 |------|--------|-------------------|
@@ -36,76 +36,44 @@ The tool supports the following mode flags:
 | `--all` | All | All domains supported by the current version |
 
 - If no mode flag is provided, `--all` is used by default.
-- Multiple mode flags combine additively (e.g., `--network --env` inspects both domains).
-- `--all` always means all domains supported by the current tool version. As new domains are added in future versions, `--all` will automatically include them.
+- Multiple mode flags combine additively.
+- `--all` always refers to all inspection domains supported by the current version.
 
-### 3.3 Output Format
+### 3.3 Output
 
-- **Default**: Human-readable plain text report to stdout
-- **`--json`**: Structured JSON output to stdout (no formal schema; structure may change between versions)
+The tool produces a structured, human-readable diagnostic report printed to stdout.
 
-### 3.4 Standard Flags
+By default, the output is plain text intended for direct human consumption.
 
-| Flag | Behavior |
-|------|----------|
-| `--help` | Display usage information and exit |
-| `--version` | Display tool version and exit |
-| `--quiet` / `-q` | Suppress progress output to stderr (errors still shown) |
-| `--log-dir <path>` | Override log file location (default: system temp directory) |
-
-### 3.5 Classification Labels
+If the `--json` flag is provided, the tool outputs structured JSON to stdout.
+No formal or stable JSON schema is guaranteed.
 
 The report must clearly distinguish between:
+- **FACT**: information obtained directly from the system
+- **INFERENCE**: information derived from one or more FACTs
+- **UNKNOWN**: information that could not be retrieved, with reason
 
-| Label | Definition |
-|-------|------------|
-| **FACT** | Information obtained directly from a system call or API response |
-| **INFERENCE** | Information derived or computed from one or more FACTs |
-| **UNKNOWN** | Information that could not be retrieved (with reason) |
+Observed information does not imply correctness or functionality.
 
-This is a strict classification: any derivation from observed data, however trivial, is an INFERENCE.
+Each report must include a brief disclaimer explaining that:
+- FACT indicates observation, not correctness
+- INFERENCE indicates derived information
+- UNKNOWN indicates missing or inaccessible information
 
-### 3.6 Output Semantics Disclaimer
+### 3.4 Privilege Handling
 
-Every report must include a brief disclaimer explaining:
-- FACT means "observed by the tool," not "correct" or "working"
-- INFERENCE means derived from observations
-- UNKNOWN means the tool could not retrieve the information
-
-Detailed semantics must also be documented in `--help` output and external documentation.
-
-### 3.7 Execution Context Detection
-
-The tool must detect and label (as metadata) when running in:
-- A container environment
-- A remote session (SSH)
-
-This is informational labeling only, not a warning.
-
-### 3.8 Privilege Handling
-
-- The tool auto-detects whether it is running with elevated privileges at runtime.
-- If elevated, it attempts privileged operations and labels the resulting data as obtained with elevation.
-- If not elevated, it attempts all operations and reports permission-denied cases as UNKNOWN with reason.
-- The tool never automatically escalates privileges.
-
-### 3.9 Stderr Output
-
-The tool writes to stderr:
-- Progress indicators during execution
-- Error messages
-
-Use `--quiet` / `-q` to suppress progress output (errors still shown).
-
-The tool does not modify system state.
+- The tool does not escalate privileges automatically.
+- If run with elevated privileges, additional information may be collected.
+- Data obtained with elevated privileges must be explicitly labeled.
+- Permission-denied cases must be reported as UNKNOWN with reason.
 
 ---
 
 ## 4. Inputs
 
-- Command-line flags (mode flags, output flags, standard flags)
+- Command-line flags
 - Local system state accessible to the current process
-- Elevated permissions if the tool is invoked with elevation
+- Elevated permissions if explicitly granted by the user
 
 The tool does not require network access.
 
@@ -113,25 +81,14 @@ The tool does not require network access.
 
 ## 5. Outputs
 
-### 5.1 Report Structure
+- A diagnostic report grouped by inspection domain
+- Each reported item labeled as FACT, INFERENCE, or UNKNOWN
+- Explicit indication of permission-related limitations
 
-A diagnostic report printed to stdout containing:
-- Execution context metadata (timestamp, platform, elevation status, container/SSH detection)
-- Semantics disclaimer
-- Domain sections (Network, Environment) based on selected modes
-- Each item labeled as FACT, INFERENCE, or UNKNOWN
-- Explicit indication of permission-denied cases
-- Explicit indication of data obtained with elevated privileges
-- Dedicated **Errors** section collecting all errors encountered during the run
+### 5.1 Exit Codes
 
-### 5.2 Exit Codes
-
-| Exit Code | Meaning |
-|-----------|---------|
-| 0 | Report was produced (regardless of UNKNOWN items) |
-| Non-zero | Tool-level failure (crash, invalid arguments, etc.) |
-
-The presence of UNKNOWN items does not affect the exit code.
+- Exit code `0`: A report was successfully produced, even if some items are UNKNOWN
+- Non-zero exit code: Tool-level failure (e.g., invalid arguments, unrecoverable error)
 
 ---
 
@@ -139,11 +96,10 @@ The presence of UNKNOWN items does not affect the exit code.
 
 - Read-only operation
 - No automatic privilege escalation
-- No remediation or "fix" actions
-- No background processes
+- No remediation or system modification
 - No telemetry
-- **Temporary files**: Allowed during execution if cleaned up before exit
-- **Log files**: Allowed for errors and execution flow; written to system temp directory by default (configurable via `--log-dir`)
+- No persistent state  
+  (temporary files must be cleaned up; diagnostic log files are permitted)
 
 ---
 
@@ -151,33 +107,30 @@ The presence of UNKNOWN items does not affect the exit code.
 
 The tool explicitly does **not**:
 - Fix or modify system configuration
-- Validate correctness of configuration (FACT ≠ correct)
+- Validate correctness of configuration
 - Guarantee completeness of reported data
 - Replace human judgment
 - Act as a monitoring or alerting system
-- Provide a stable JSON schema (structure may change between versions)
+- Guarantee a stable machine-readable output schema
 
 ---
 
 ## 8. Assumptions
 
 ### User
-- The user is a technical user comfortable with CLI tools
-- The user understands that diagnostic output may be incomplete
-- The user understands that FACT means "observed," not "correct"
+- The user is a technical CLI user
+- Diagnostic output may be incomplete
+- FACT means "observed", not "correct"
 - The user may be operating under time pressure
 
 ### Environment
-- The tool runs on the local machine (Linux or Windows)
-- The tool does not have elevated privileges by default
-- Some information may only be available with elevated permissions
-- Data obtained with elevated privileges must be explicitly labeled
-- The tool may run inside a container or remote session
+- The tool runs on the local machine
+- Some information may require elevated privileges
+- Execution context may affect visibility of system data
 
 ### Data
 - Absence of data does not imply correctness
-- Some system information may be inaccessible due to permissions or OS differences
-- PATH entries may reference non-existent directories
+- Some system information may be inaccessible
 
 ### Operational
 - The tool is used for inspection, not remediation
@@ -187,11 +140,8 @@ The tool explicitly does **not**:
 
 ## 9. Success Criteria
 
-The tool is considered successful if:
-- A user can clearly distinguish what is known (FACT), derived (INFERENCE), and unavailable (UNKNOWN)
-- The output reduces incorrect assumptions during debugging
+The tool is successful if:
+- Users can clearly distinguish FACT, INFERENCE, and UNKNOWN
+- Output reduces incorrect assumptions
 - The tool never implies certainty without evidence
-- The semantics disclaimer is present in every report
-- The behavior matches the declared constraints and non-goals
-- Errors are collected and reported in a dedicated section
-- Execution context (container, SSH) is detected and labeled
+- Behavior matches declared constraints and non-goals
