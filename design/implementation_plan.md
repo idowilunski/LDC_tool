@@ -164,19 +164,27 @@ This plan translates the specification into discrete modules with clear boundari
 |--------|----------------|------------------|
 | Interfaces | Read `/sys/class/net/`, `ip addr` parsing | WMI or `ipconfig` parsing |
 | Gateway | Parse `/proc/net/route` or `ip route` | `route print` or WMI |
-| DNS | Read `/etc/resolv.conf` | Registry or `ipconfig /all` |
+| DNS | Read `/etc/resolv.conf` (file contents only) | `ipconfig /all` |
 | Listening ports | Parse `/proc/net/tcp`, `/proc/net/udp` or `ss` | `netstat -an` or API |
 
 **Labeling Rules**:
+- Deterministic parsing of OS-provided files, commands, or APIs is considered direct observation (FACT) in v1.
 - Direct observation → FACT
-- Derived from FACTs (e.g., "likely default interface") → INFERENCE
+- Deterministic derivation from explicitly listed FACT items → INFERENCE
+- INFERENCE items must reference the FACT items they were derived from
+- Heuristic, probabilistic, or confidence-based inference is not permitted in v1
 - Permission denied or unavailable → UNKNOWN with reason
+- If timeouts are implemented, timeout → UNKNOWN with reason "operation timed out"
 - Data obtained via elevation → mark `requiresElevation: true`
+- In v1, the Network Inspector does not produce INFERENCE items; all reported items are either FACT or UNKNOWN.
 
 **Error Handling**:
-- File not found → UNKNOWN
-- Permission denied → UNKNOWN with "permission denied" reason
-- Unexpected format → UNKNOWN with "parse error" reason
+- File not found → UNKNOWN with `"file not found"` reason
+- Permission denied → UNKNOWN with `"permission denied"` reason
+- Unexpected format or parse failure → UNKNOWN with `"parse error"` reason
+- Timeouts must not abort inspection; continue with remaining targets
+- Inspector-level errors must not discard successfully collected items
+
 
 ---
 
@@ -232,7 +240,11 @@ This plan translates the specification into discrete modules with clear boundari
 - Group items by domain
 - Attach metadata (timestamp, platform)
 - Include standard disclaimer text
-- Preserve labeling (FACT/INFERENCE/UNKNOWN)
+- Preserve labeling (FACT / INFERENCE / UNKNOWN)
+- Preserve per-item `requiresElevation` flags without modification
+- Preserve inspector-level errors (`InspectionResult.inspectorErrors`) for output rendering
+- Do not discard internal justification fields (e.g., `sources`), even if not rendered in v1 output
+
 
 ---
 
@@ -248,6 +260,9 @@ This plan translates the specification into discrete modules with clear boundari
 - Formatted string written to stdout
 
 **Plain Text Format**:
+- Per-item elevation status must be rendered when `requiresElevation=true`
+- Inspector-level errors must be rendered inline with affected items and must not be silently dropped
+
 ```
 Local Diagnostics Snapshot
 Generated: <timestamp>
@@ -255,7 +270,7 @@ Platform: <platform>
 Privileges: <elevated|standard>
 
 ─── NETWORK ───────────────────────────────
-[FACT] Interface: eth0 - 192.168.1.100
+[FACT][ELEVATED] Interface: eth0 - 192.168.1.100
 [FACT] Default Gateway: 192.168.1.1
 [UNKNOWN] DNS servers (permission denied)
 
@@ -274,6 +289,9 @@ UNKNOWN = could not retrieve
 - Serialize `DiagnosticReport` to JSON
 - No schema guarantees (per spec)
 - Include all labels and metadata
+- Include per-item `requiresElevation`
+- Include inspector-level errors
+- Include disclaimer text
 
 ---
 
